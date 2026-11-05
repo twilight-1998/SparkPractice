@@ -1,0 +1,815 @@
+#### SPARK UI
+data = sc.parallelize(["1","sai"])
+
+data.foreach(print)
+
+import time
+time.sleep(200)   #  localhost:4040
+-------------------------------------------------------------------------------------------------------
+#### Persist and unpersist sample example
+
+data = [
+    ("00000000", "06-26-2011", 200, "Exercise", "GymnasticsPro", "cash"),
+    ("00000001", "05-26-2011", 300, "Exercise", "Weightlifting", "credit"),
+    ("00000002", "06-01-2011", 100, "Exercise", "GymnasticsPro", "cash"),
+    ("00000003", "06-05-2011", 100, "Gymnastics", "Rings", "credit"),
+    ("00000004", "12-17-2011", 300, "Team Sports", "Field", "paytm"),
+    ("00000005", "02-14-2011", 200, "Gymnastics", None, "cash")
+]
+df = spark.createDataFrame(data).toDF("id", "tdate", "amt", "category", "product", "mode")
+
+fildf = df.filter("category ='Exercise'")
+
+import time
+time.sleep(30)   # hit    localhost:4040/storage/
+
+fildf.persist()
+
+print(" ===== DATA PERSISTED======  ")
+
+seldf1 = fildf.select("id" , "tdate")
+seldf1.show()
+
+seldf2 = fildf.select("amt" ,"category")
+seldf2.show()
+
+import time
+time.sleep(60)
+
+fildf.unpersist()
+print(" ===== DATA UNPERSISTED ======  ")
+
+import time
+time.sleep(60)
+
+-------------------------------------------------------------------------------------------------------
+##### SPARK READ/Extract DATA FROM DIFFERENT FILE FORMAT
+
+print("==== CSV DATA ====")
+csvdf = (
+    spark.read.format("csv").option("header","true").load("usdata.csv"))
+csvdf.show()
+
+print("==== JSON DATA ====")
+jsondf = (spark.read.format("json").load("file4.json"))
+jsondf.show()
+
+print("==== PARQUET DATA ====")
+parquetdf =(spark.read.format("parquet").load("file5.parquet"))
+parquetdf.show()
+
+-------------------------------------------------------------------------------------------------------
+### Spark SQL
+
+csvdf.createOrReplaceTempView("toxic")
+spark.sql("select * from toxic  where  state='LA'").show()
+-------------------------------------------------------------------------------------------------------
+### Spark DSL Transform
+
+data = [
+    ("00000000", "06-26-2011", 200, "Exercise", "GymnasticsPro", "cash"),
+    ("00000001", "05-26-2011", 300, "Exercise", "Weightlifting", "credit"),
+    ("00000002", "06-01-2011", 100, "Exercise", "GymnasticsPro", "cash"),
+    ("00000003", "06-05-2011", 100, "Gymnastics", "Rings", "credit"),
+    ("00000004", "12-17-2011", 300, "Team Sports", "Field", "paytm"),
+    ("00000005", "02-14-2011", 200, "Gymnastics", None, "cash")
+]
+
+df = spark.createDataFrame(data).toDF("id", "tdate", "amt", "category", "product", "mode")
+df.show()
+
+                                    ## ---------- Filters ----------------
+seldf = df.select( "tdate" , "category" )
+seldf.show()
+
+dropdf = df.drop("tdate" , "category"  )
+dropdf.show()
+
+# category = 'Exercise'
+filter1 = df.filter("category = 'Exercise'")
+filter1.show()
+
+# category = 'Exercise' and mode = 'cash'
+filter2 = df.filter("category = 'Exercise' and mode = 'cash'")
+filter2.show()
+
+# category = 'Exercise' or mode = 'cash'
+filter3 = df.filter("category = 'Exercise' or mode = 'cash'")
+filter3.show()
+
+# category in ('Exercise', 'Gymnastics')
+filter4 = df.filter("category in ('Exercise', 'Gymnastics')")
+filter4.show()
+
+# product like '%Gymnastics%'
+filter5 = df.filter("product like '%Gymnastics%'")
+filter5.show()
+
+# product is null
+filter6 = df.filter("product is null")
+filter6.show()
+
+# product is not null
+filter7 = df.filter("product is not null")
+filter7.show()
+
+# category != 'Exercise'
+filter8 = df.filter("category != 'Exercise'")
+filter8.show()
+
+                                       ## ---------- Expressions ----------------
+# selectExpr will not only select the column ,it will also perform the expressions on the column.
+#even thought we dont have any action to perform on other columns we have to select them as well along with the expr column in  selectExpr.
+dfexp=df.selectExpr("cast(id as int) as id",
+                    "split(tdate,'-')[2] as year",
+                    "split(tdate,'-')[0] as Month",
+                    "split(tdate,'-')[1] as Date","amt + 100 as amount",
+                    "upper(category) as category",
+                    "concat(product,'~zeyo') as product","mode",
+                    "case when mode='cash' then 0 when mode='credit' then 1 else 2 end as status")
+
+dfexp.show()
+dfexp.printSchema()
+
+# I want to process only one column without disturbing other columns.
+#withcolumn expects two parameters (column_name,expression)--> it will pick required column , it will process the column ,it will put the column in the same place.
+#if you want to process more than one column you have to use withcolumn multiple times.
+#if you want a new column -still it will perform expression and add the new column at the end.
+#it needs an import --> from pyspark.sql.functions import *
+
+Example 1:---
+data = [
+    ("00000000", "06-26-2011", 200, "Exercise", "GymnasticsPro", "cash"),
+    ("00000001", "05-26-2011", 300, "Exercise", "Weightlifting", "credit"),
+    ("00000002", "06-01-2011", 100, "Exercise", "GymnasticsPro", "cash"),
+    ("00000003", "06-05-2011", 100, "Gymnastics", "Rings", "credit"),
+    ("00000004", "12-17-2011", 300, "Team Sports", "Field", "paytm"),
+    ("00000005", "02-14-2011", 200, "Gymnastics", None, "cash")
+]
+df = spark.createDataFrame(data).toDF(
+    "id", "tdate", "amt", "category", "product", "mode"
+)
+df.show()
+
+from pyspark.sql.functions import *
+withDF =(
+    (
+        df
+        .withColumn("category"  ,   expr("upper(category)")   ))
+        .withColumn( "amt" , expr("amt + 1000"))
+        .withColumn( "product"  , expr("concat(product,'~zeyo')")   )
+        .withColumn("id" , expr(" cast(id as int)"))
+        .withColumn("tdate" , expr(" split(tdate,'-')[2]"))
+        .withColumn("status" , expr("case when mode = 'cash' then 1 else 0 end"))
+        .withColumnRenamed("tdate" , "year")  # to rename a column
+)
+withDF.show()
+
+Example 2:---
+data = [(1, "Jhon", 4000),(2, "Tim David", 12000),(3, "Json Bhrendroff", 7000),(4, "Jordon", 8000),(5, "Green", 14000),(6, "Brewis", 6000)]
+
+df = spark.createDataFrame(data, ["emp_id", "emp_name", "salary"])
+
+df_grade=df.withColumn("Grade",expr("case when salary > 10000 then 'A' when salary between 5000 and 10000 then 'B' else 'C' end"))
+df_grade.show()
+
+Example 3:---
+data1 = [(1, "A"),(2, "B"),(3, "C"),(4, "D")]
+df1 = spark.createDataFrame(data1, ["id", "name"])
+data2 = [(1, "A"),(2, "B"),(4, "X"),(5, "F")]
+df2 = spark.createDataFrame(data2, ["id", "name1"])
+df1.show()
+df2.show()
+
+joindf = df1.join(df2, ["id"], "full")
+joindf.show()
+
+from pyspark.sql.functions import *
+procdf = joindf.withColumn("comment",expr("""
+                    case
+                    when  name = name1 then  'Matched'
+                    when  name1 is null then 'New in Source'
+                    when  name  is null then 'New in Target'
+                    else 'Mismatch'
+                    end
+"""))
+procdf.show()
+
+finaldf = procdf.drop("name","name1").filter(" comment != 'Matched'")
+finaldf.show()
+-------------------------joins-------------------------
+
+data4 = [(1, "raj"),(2, "ravi"),(3, "sai"),(5, "rani")]
+
+cust = spark.createDataFrame(data4, ["id", "name"])
+cust.show()
+
+data3 = [(1, "mouse"),(3, "mobile"),(7, "laptop")]
+prod = spark.createDataFrame(data3, ["id", "product"])
+prod.show()
+
+inner_join=cust.join(prod , ["id"], "inner")
+inner_join.show()
+
+left_join=cust.join(prod , ["id"], "left")
+left_join.show()
+
+right_join=cust.join(prod , ["id"], "right")
+right_join.show()
+
+full_join=cust.join(prod , ["id"], "full")
+full_join.show()
+
+left_anti_join=cust.join(prod , ["id"], "left_anti")
+left_anti_join.show()
+
+#Note:- there is no right_anti join if u want to perform then u just need to swap the table names.
+left_anti_join=prod.join(cust , ["id"], "leftanti")
+left_anti_join.show()
+
+crossj = cust.crossJoin(prod)
+crossj.show()
+
+#note:- if the column name are different the we have to use the column names along with the table name.
+innerj  = cust.join(  prod  ,   cust["id"] == prod["cid"]  , "inner" ).drop("cid")
+innerj.show()
+
+
+---------------------#Senario-1------------------
+data = [
+    ("A", "AA"),
+    ("B", "BB"),
+    ("C", "CC"),
+    ("AA", "AAA"),
+    ("BB", "BBB"),
+    ("CC", "CCC")
+]
+df = spark.createDataFrame(data, ["child", "parent"])
+df.show()
+
+df1  =  df
+df2 =   df.withColumnRenamed("child","child1").withColumnRenamed("parent","parent1")
+
+df1.show()
+df2.show()
+
+df_full=df1.join(df2,df1["parent"]==df2["child1"],"inner").drop("child1").withColumnRenamed("parent1","Grandparent")
+df_full.show()
+
+-----------------------#scenario-2--------------------------
+data1 = [
+    (1, "abc", 31, "abc@gmail.com"),
+    (2, "def", 23, "defyahoo.com"),
+    (3, "xyz", 26, "xyz@gmail.com"),
+    (4, "qwe", 34, "qwegmail.com"),
+    (5, "iop", 24, "iop@gmail.com")
+]
+
+df1 = spark.createDataFrame(data1, ["id", "name", "age", "email"])
+df1.show()
+
+data2 = [
+    (11, "jkl", 22, "abc@gmail.com", 1000),
+    (12, "vbn", 33, "vbn@yahoo.com", 3000),
+    (13, "wer", 27, "wer", 2000),
+    (14, "zxc", 30, "zxc.com", 2000),
+    (15, "lkj", 29, "lkj@outlook.com", 2000)
+]
+
+df2 = spark.createDataFrame(
+    data2,
+    ["id", "name", "age", "email", "salary"]
+)
+df2.show()
+
+from pyspark.sql.functions import *
+
+df1_valid = df1.filter("email like '%@%'").withColumn("salary" ,expr("1000"))
+df1_valid.show()
+
+df2_valid = df2.filter("email like '%@%'")
+df2_valid.show()
+
+uniondf = df1_valid.union(df2_valid)
+uniondf.show()
+
+-----------Windows Function-----------
+data = [
+    ("DEPT1", 500),
+    ("DEPT1", 1000),
+    ("DEPT1", 700),
+
+    ("DEPT2", 200),
+    ("DEPT2", 400),
+
+    ("DEPT3", 200),
+    ("DEPT3", 500)
+]
+df = spark.createDataFrame(data, ["department", "salary"])
+df.show()
+
+from pyspark.sql.functions import *
+denseRankdf = df.withColumn("dense_rank" , expr("""
+                                                 dense_rank()
+                                                 over (
+                                                        partition by department
+                                                        order by salary desc
+                                                    )
+                                            """))
+
+denseRankdf.show()
+
+finaldf = denseRankdf.filter("dense_rank = 2").drop("dense_rank")
+finaldf.show()
+
+-------------------------- Aggregations --------------------------
+Example 1:-
+data = [("sai", "Hyd", 10),("zeyo", "Chn", 5),("sai", "Chn", 5),("zeyo", "Hyd", 10),("sai", "Chn", 20),("zeyo", "Chn", 10),("sai", "Hyd", 30)]
+df = spark.createDataFrame(data).toDF("name", "city", "amt")
+df.show()
+
+from pyspark.sql.functions import *
+df_agg=df.groupby("name","city").agg(sum("amt").alias("Total"),
+                              count("amt").alias("Count"),
+                              collect_list("amt").alias("amt_list"),
+                              collect_set("amt").alias("amt_unique")
+                              ).orderBy("Total")
+df_agg.show()
+
+Example 2:-
+data = [(1, "Mark Ray", "AB"),(2, "Peter Smith", "CD"),(1, "Mark Ray", "EF"),(2, "Peter Smith", "GH"),(2, "Peter Smith", "CD"),(3, "Kate", "IJ")]
+df = spark.createDataFrame(data, ["custid", "custname", "address"])
+df.show()
+
+from pyspark.sql.functions import *
+
+aggdf= df.groupBy("custid" , "custname").agg(
+        collect_set("address").alias("address")
+).orderBy("custid")
+
+aggdf.show()
+
+------------------------------- Scenario -------------------------------------------
+data = [
+    ("Renuka1992@gmail.com", "9856765434"),
+    ("anrasu@gmail.com", "9844567788")
+]
+df = spark.createDataFrame(data, ["email", "mobile"])
+df.show()
+
+from pyspark.sql.functions import expr
+df1 = (
+    df
+    .withColumn("split_0", expr("split(email, '@')[0]"))
+    .withColumn("split_1", expr("split(email, '@')[1]"))
+    .withColumn("length", expr("length(split_0)"))
+    .withColumn("redlength", expr("length - 3"))
+    .withColumn("First", expr("substring(split_0, 1, 1)"))
+    .withColumn("last", expr("substring(split_0, length(split_0)-1, 2)"))
+    .withColumn(
+        "Masking",
+        expr("concat(First, repeat('*', redlength), last)")
+    )
+    .withColumn(
+        "Final",
+        expr("concat(Masking, '@', split_1)")
+    )
+)
+df1.show(truncate=False)
+
+-------------------- Types of Complex Data ----------------------
+#Multi line
+data= """
+    {
+    	"id" : 1   ,
+    	"trainer" : "Sai"  ,
+    	"zeyoAddress"   : {
+    					"permanentAddress" : "Hyderabad",
+    					"temporaryAddress" : "Chennai"
+    	}
+    }
+"""
+df = (spark.read.option("multiline","true").json(sc.parallelize([data])))
+df.show()
+df.printSchema()
+
+#Struct
+flatdf = df.select(
+    "id",
+    "trainer",
+    "zeyoAddress.permanentAddress",
+    "zeyoAddress.temporaryAddress"
+)
+
+flatdf.show()
+flatdf.printSchema()
+
+#----Example 2 for struct
+data="""
+{
+	"first_name": "Rajeev",
+	"last_name": "Sharma",
+	"email_address": "rajeev@ezeelive.com",
+	"is_alive": true,
+	"age": 30,
+	"height_cm": 185.2,
+	"address": {
+		"billing_address": {
+			"address": "502, Main Market, Evershine City, Evershine, Vasai East",
+			"city": "Vasai Raod, Palghar",
+			"state": "Maharashtra",
+			"postal_code": "401208"
+		},
+		"shipping_address": {
+			"address": "Ezeelive Technologies, A-4, Stattion Road, Oripada, Dahisar East",
+			"city": "Mumbai",
+			"state": "Maharashtra",
+			"postal_code": "400058"
+		}
+	},
+	"date_of_birth": null
+}
+
+"""
+
+df=  (
+    spark
+    .read
+    .option("multiline","true")
+    .json(sc.parallelize([data]))
+)
+
+df.show()
+df.printSchema()
+
+
+flatdf = df.selectExpr(
+
+
+    "address.billing_address.address as   billing_address",
+    "address.billing_address.city         as   billing_city",
+    "address.billing_address.postal_code  as   billing_postal_code",
+    "address.billing_address.state        as   billing_state",
+
+    "address.shipping_address.address     as   shipping_address",
+    "address.shipping_address.city        as   shipping_city",
+    "address.shipping_address.postal_code as   shipping_postal_code",
+    "address.shipping_address.state       as   shipping_state",
+
+    "age",
+    "date_of_birth",
+    "email_address",
+    "first_name",
+    "height_cm",
+    "is_alive",
+    "last_name"
+)
+
+flatdf.show()
+flatdf.printSchema()
+
+-------------------------#Example 3 for struct--------------
+data="""
+{
+  "employee_id": 101,
+  "name": "Sai",
+  "department": {
+    "dept_id": "D10",
+    "dept_name": "Data Engineering",
+    "location": {
+      "city": "Hyderabad",
+      "state": "Telangana",
+      "country": "India"
+    }
+  },
+  "contact": {
+    "email": "sai@gmail.com",
+    "phone": "9876543210",
+    "address": {
+      "house_no": "101",
+      "area": "Kondapur",
+      "city": "Hyderabad",
+      "pincode": "500084"
+    }
+  }
+}
+
+"""
+
+df=  (
+    spark
+    .read
+    .option("multiline","true")
+    .json(sc.parallelize([data]))
+)
+
+seldf = df.selectExpr(
+    "employee_id",
+    "name",
+    "contact.email",
+    "contact.phone",
+    "contact.address.area",
+    "contact.address.city as address_city",
+    "contact.address.house_no",
+    "contact.address.pincode",
+    "department.dept_id",
+    "department.dept_name",
+    "department.location.city as location_city",
+    "department.location.state",
+    "department.location.country"
+)
+
+seldf.show()
+seldf.printSchema()
+
+
+df.show()
+df.printSchema()
+
+-----------------------#complex data types with withcolumn----------------
+data="""
+{
+    "id" : 1   ,
+    "trainer" : "Sai" ,
+    "zeyoAddress" :{
+                "permanentAddress" : "hyderabad",
+                "temporaryAddress" : "chennai"
+    }
+}
+
+"""
+
+df=  (
+        spark
+        .read
+        .option("multiline","true")
+        .json(sc.parallelize([data]))
+)
+
+df.show()
+df.printSchema()
+
+flatdf = df.select(
+
+    "id",
+    "trainer",
+    "zeyoAddress.permanentAddress",
+    "zeyoAddress.temporaryAddress"
+
+)
+
+flatdf.show()
+flatdf.printSchema()
+
+
+from pyspark.sql.functions import *
+
+withflatdf = (
+
+        df.withColumn("permanentAddress", expr("zeyoAddress.permanentAddress"))
+
+        .withColumn("temporaryAddress", expr("zeyoAddress.temporaryAddress"))
+
+        .drop("zeyoAddress")
+)
+
+withflatdf.show()
+withflatdf.printSchema()
+
+#-------------- complex data type  (multiline) --------------
+data="""
+{
+  "employee_id": 101,
+  "name": "Sai",
+  "department": {
+    "dept_id": "D10",
+    "dept_name": "Data Engineering",
+    "location": {
+      "city": "Hyderabad",
+      "state": "Telangana",
+      "country": "India"
+    }
+  },
+  "contact": {
+    "email": "sai@gmail.com",
+    "phone": "9876543210",
+    "address": {
+      "house_no": "101",
+      "area": "Kondapur",
+      "city": "Hyderabad",
+      "pincode": "500084"
+    }
+  }
+}
+
+"""
+
+
+df=  (
+    spark
+    .read
+    .option("multiline","true")
+    .json(sc.parallelize([data]))
+)
+
+seldf = df.selectExpr(
+    "employee_id",
+    "name",
+    "contact.email",
+    "contact.phone",
+    "contact.address.area",
+    "contact.address.city as address_city",
+    "contact.address.house_no",
+    "contact.address.pincode",
+    "department.dept_id",
+    "department.dept_name",
+    "department.location.city as location_city",
+    "department.location.state",
+    "department.location.country"
+)
+
+seldf.show()
+seldf.printSchema()
+
+
+df.show()
+df.printSchema()
+
+--------------------------complex data type (array) -------------------
+Example1:-------
+
+data = """
+{
+    "id" : 1   ,
+    "trainer" : "Sai" ,
+    "zeyoStudents" : [
+             "Aarti",
+             "Ashok"
+       ]
+}
+"""
+
+df = spark.read.json(sc.parallelize([data]))
+df.show()
+df.printSchema()
+
+
+flat_arr_df = df.selectExpr(
+
+    "id" ,
+    "trainer"  ,
+    "explode(zeyoStudents) as zeyoStudents"
+)
+
+flat_arr_df.show()
+flat_arr_df.printSchema()
+
+Example2:----------------
+data = """
+{
+    "id" : 1   ,
+    "trainer" : "Sai" ,
+    "users" : {
+    "zeyoStudents" : [
+             "Aarti",
+             "Ashok"
+       ]
+       }
+}
+"""
+
+df = spark.read.json(sc.parallelize([data]))
+df.show()
+df.printSchema()
+
+flat_arr_df = df.selectExpr(
+
+    "id" ,
+    "trainer"  ,
+    "explode(users.zeyoStudents) as zeyoStudents"
+)
+
+flat_arr_df.show()
+flat_arr_df.printSchema()
+
+Example3:---------------------------------
+data = """
+{
+  "country" : "US",
+  "version" : "0.6",
+  "Actors": [
+    {
+      "name": "Tom Cruise",
+      "age": 56,
+      "BornAt": "Syracuse, NY",
+      "Birthdate": "July 3, 1962",
+      "photo": "https://jsonformatter.org/img/tom-cruise.jpg",
+      "wife": null,
+      "weight": 67.5,
+      "hasChildren": true,
+      "hasGreyHair": false,
+      "picture": {
+                    "large": "https://randomuser.me/api/portraits/men/73.jpg",
+                    "medium": "https://randomuser.me/api/portraits/med/men/73.jpg",
+                    "thumbnail": "https://randomuser.me/api/portraits/thumb/men/73.jpg"
+                }
+    },
+    {
+      "name": "Robert Downey Jr.",
+      "age": 53,
+      "BornAt": "New York City, NY",
+      "Birthdate": "April 4, 1965",
+      "photo": "https://jsonformatter.org/img/Robert-Downey-Jr.jpg",
+      "wife": "Susan Downey",
+      "weight": 77.1,
+      "hasChildren": true,
+      "hasGreyHair": false,
+      "picture": {
+                    "large": "https://randomuser.me/api/portraits/men/78.jpg",
+                    "medium": "https://randomuser.me/api/portraits/med/men/78.jpg",
+                    "thumbnail": "https://randomuser.me/api/portraits/thumb/men/78.jpg"
+                }
+    }
+  ]
+}
+"""
+
+
+df = spark.read.json(sc.parallelize([data]))
+df.show()
+df.printSchema()
+
+
+explodedf = df.selectExpr(
+    "explode(Actors) as Actors",
+    "country",
+    "Version"
+)
+# Can do the same using withcolumn
+from pyspark.sql.functions import *
+#explodedf = df.withColumn("Actors",expr("explode(Actors)"))
+
+explodedf.show()
+explodedf.printSchema()
+
+flatdf = explodedf.select(
+    "Actors.Birthdate",
+    "Actors.BornAt",
+    "Actors.age",
+    "Actors.hasChildren",
+    "Actors.hasGreyHair",
+    "Actors.name",
+    "Actors.photo",
+    "Actors.picture.large",
+    "Actors.picture.medium",
+    "Actors.picture.thumbnail",
+    "Actors.weight",
+    "Actors.wife",
+    "country",
+    "Version"
+)
+
+flatdf.show()
+flatdf.printSchema()
+
+------------------------------- URLLoader ----------------------------
+import urllib.request
+url_data = urllib.request.urlopen("https://randomuser.me/api/0.8/?results=3").read().decode('utf-8')
+
+df = spark.read.json(sc.parallelize([url_data]))
+df.show()
+df.printSchema()
+
+from pyspark.sql.functions import expr
+withdf = df.withColumn("results", expr("explode(results)"))
+
+flattened_df = withdf.select(
+    "nationality",
+    "results.user.cell",
+    "results.user.dob",
+    "results.user.email",
+    "results.user.gender",
+    "results.user.location.city",
+    "results.user.location.state",
+    "results.user.location.street",
+    "results.user.location.zip",
+    "results.user.md5",
+    "results.user.name.first",
+    "results.user.name.last",
+    "results.user.name.title",
+    "results.user.password",
+    "results.user.phone",
+    "results.user.picture.large",
+    "results.user.picture.medium",
+    "results.user.picture.thumbnail",
+    "results.user.registered",
+    "results.user.salt",
+    "results.user.sha1",
+    "results.user.sha256",
+    "results.user.username",
+    "seed",
+    "version"
+)
+
+flattened_df.show()
+flattened_df.printSchema()
